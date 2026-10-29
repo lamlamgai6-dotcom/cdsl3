@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vương Quốc Gõ Chữ Telex</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+</head>
+<body class="bg-blue-50 font-sans antialiased overflow-hidden">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // --- CẤU HÌNH FIREBASE ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyCTyBHCHC698ruL6cuqGk2UHWn7HjW8JkM",
+      authDomain: "cdstelex.firebaseapp.com",
+      projectId: "cdstelex",
+      storageBucket: "cdstelex.firebasestorage.app",
+      messagingSenderId: "937304193539",
+      appId: "1:937304193539:web:59df4aca475e8c1ac3ac36",
+      measurementId: "G-QFJSN3MBQR",
+      databaseURL: "https://cdstelex-default-rtdb.firebaseio.com"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // --- TỪ ĐIỂN VÀ CẤP ĐỘ ---
+    const DICTIONARY = {
+      'á': { telex: 'as', icon: '🅰️', level: 1 }, 'à': { telex: 'af', icon: '🅰️', level: 1 }, 
+      'ả': { telex: 'ar', icon: '🅰️', level: 1 }, 'ã': { telex: 'ax', icon: '🅰️', level: 1 }, 
+      'ạ': { telex: 'aj', icon: '🅰️', level: 1 },
+      'ă': { telex: 'aw', icon: '🌙', level: 2 }, 'â': { telex: 'aa', icon: '⛺', level: 2 }, 
+      'ê': { telex: 'ee', icon: '👒', level: 2 }, 'ô': { telex: 'oo', icon: '☂️', level: 2 }, 
+      'ơ': { telex: 'ow', icon: '🎀', level: 2 }, 'ư': { telex: 'w', icon: '🌊', level: 2 }, 
+      'đ': { telex: 'dd', icon: '🎸', level: 2 },
+      'cá': { telex: 'cas', icon: '🐟', level: 3 }, 'gà': { telex: 'gaf', icon: '🐔', level: 3 }, 
+      'thỏ': { telex: 'thor', icon: '🐰', level: 3 }, 'chó': { telex: 'chos', icon: '🐶', level: 3 },
+      'mèo': { telex: 'meof', icon: '🐈', level: 4 }, 'chữ': { telex: 'chuwx', icon: '🔠', level: 4 }, 
+      'khế': { telex: 'khees', icon: '⭐', level: 4 }, 'phở': { telex: 'phowr', icon: '🍜', level: 4 },
+      'mặt trời': { telex: 'mawtj trowif', icon: '🌞', level: 5 }, 
+      'trường học': { telex: 'truwowfng howcj', icon: '🏫', level: 5 }, 
+      'quả bóng': { telex: 'quar bongs', icon: '⚽', level: 5 },
+      'đi học': { telex: 'ddi howcj', icon: '🎒', level: 6 }, 
+      'mùa hè': { telex: 'muaf hef', icon: '🏖️', level: 6 }
+    };
+
+    const getWordsByLevel = (level) => {
+      const maxLevel = Math.min(level, 6);
+      return Object.entries(DICTIONARY)
+        .filter(([_, data]) => data.level === maxLevel || data.level === maxLevel - 1)
+        .map(([word, data]) => ({ word, telex: data.telex, icon: data.icon }));
+    };
+
+    function App() {
+      const [role, setRole] = useState(null);
+      const [playerName, setPlayerName] = useState('');
+      const [showTeacherLogin, setShowTeacherLogin] = useState(false);
+      const [pin, setPin] = useState('');
+      const [errorMsg, setErrorMsg] = useState('');
+      const [roomState, setRoomState] = useState({ status: 'lobby', players: {} });
+      const [level, setLevel] = useState(1);
+      const [score, setScore] = useState(0);
+      const [activeWords, setActiveWords] = useState([]);
+      const [inputText, setInputText] = useState('');
+      const [startTime, setStartTime] = useState(null);
+      const [timeElapsed, setTimeElapsed] = useState(0);
+      const inputRef = useRef(null);
+
+      useEffect(() => {
+        const roomRef = db.ref('rooms/class1');
+        const handleValue = (snapshot) => {
+          const data = snapshot.val();
+          if (data) {
+            setRoomState(data);
+          } else {
+            roomRef.set({ status: 'lobby', players: {} });
+          }
+        };
+        roomRef.on('value', handleValue);
+        return () => roomRef.off('value', handleValue);
+      }, []);
+
+      const updateMyProgress = (newScore, newStatus, currentTime) => {
+        if (role !== 'student' || !playerName) return;
+        const safeName = playerName.replace(/[.#$[\]]/g, '_');
+        db.ref(`rooms/class1/players/${safeName}`).update({
+          score: newScore,
+          status: newStatus,
+          time: currentTime !== undefined ? currentTime : timeElapsed
+        });
+      };
+
+      const handleTeacherLogin = () => {
+        if (pin === '2808') {
+          setRole('teacher');
+          setShowTeacherLogin(false);
+          setErrorMsg('');
+        } else {
+          setErrorMsg('Mã PIN không đúng, vui lòng thử lại!');
+        }
+      };
+
+      const startGameTeacher = () => db.ref('rooms/class1/status').set('playing');
+      const resetRoomTeacher = () => db.ref('rooms/class1').set({ status: 'lobby', players: {} });
+
+      const joinGame = () => {
+        if (!playerName.trim()) return setErrorMsg('Vui lòng nhập tên của con nhé!');
+        setErrorMsg('');
+        setRole('student');
+        const safeName = playerName.replace(/[.#$[\]]/g, '_');
+        db.ref(`rooms/class1/players/${safeName}`).set({ score: 0, status: 'ready', time: 0 });
+      };
+
+      useEffect(() => {
+        if (role === 'student' && roomState.status === 'playing') {
+          if (!startTime) setStartTime(Date.now());
+          
+          const timer = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - (startTime || Date.now())) / 1000);
+            setTimeElapsed(elapsed);
+            updateMyProgress(score, 'playing', elapsed);
+          }, 1000);
+
+          const wordSpawner = setInterval(() => {
+            setActiveWords(prev => {
+              const maxWords = level <= 2 ? 2 : level <= 4 ? 3 : 4;
+              if (prev.length >= maxWords) return prev;
+              const wordList = getWordsByLevel(level);
+              const randomWord = wordList[Math.floor(Math.random() * wordList.length)];
+              const wordId = Math.random().toString(36).substr(2, 9);
+              const duration = level <= 2 ? 30 : level === 3 ? 26 : level === 4 ? 22 : level === 5 ? 18 : 15;
+              
+              const newWord = { 
+                ...randomWord, 
+                id: wordId, 
+                x: Math.floor(Math.random() * 70) + 5,
+                duration: duration
+              };
+
+              setTimeout(() => {
+                setActiveWords(current => current.filter(w => w.id !== wordId));
+              }, duration * 1000);
+
+              return [...prev, newWord];
+            });
+          }, level <= 2 ? 4000 : 2500);
+
+          if (inputRef.current) inputRef.current.focus();
+
+          return () => {
+            clearInterval(timer);
+            clearInterval(wordSpawner);
+          };
+        }
+      }, [role, roomState.status, level, startTime, score]);
+
+      const handleInput = (e) => {
+        const text = e.target.value.toLowerCase();
+        setInputText(text);
+        const matchedIndex = activeWords.findIndex(w => w.telex === text);
+        if (matchedIndex !== -1) {
+          const newScore = score + 10;
+          setScore(newScore);
+          setActiveWords(prev => prev.filter((_, i) => i !== matchedIndex));
+          setInputText('');
+          
+          let newLevel = level;
+          if (newScore >= 50 && level === 1) newLevel = 2;
+          else if (newScore >= 120 && level === 2) newLevel = 3;
+          else if (newScore >= 200 && level === 3) newLevel = 4;
+          else if (newScore >= 300 && level === 4) newLevel = 5;
+          else if (newScore >= 400 && level === 5) newLevel = 6;
+          
+          if (newLevel !== level) setLevel(newLevel);
+          if (newScore >= 500) updateMyProgress(newScore, 'finished');
+          else updateMyProgress(newScore, 'playing');
+        }
+      };
+
+      const getRankings = () => {
+        if (!roomState.players) return [];
+        return Object.entries(roomState.players)
+          .map(([name, data]) => ({ name, ...data }))
+          .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            return a.time - b.time;
+          });
+      };
+
+      if (!role) {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 flex flex-col items-center justify-center p-4 relative font-sans">
+            <button onClick={() => setShowTeacherLogin(true)} className="absolute top-4 right-4 bg-white/80 backdrop-blur shadow-md text-gray-700 px-5 py-2.5 rounded-full font-bold hover:bg-white z-50 border-2 border-purple-200 transition-all">
+              👩‍🏫 Giáo viên
+            </button>
+
+            {showTeacherLogin && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
+                <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm text-center border-4 border-purple-300">
+                  <h2 className="text-2xl font-black mb-4 text-purple-700">Quyền Quản Trị</h2>
+                  <input type="password" placeholder="Mã PIN (2808)" className="w-full p-4 border-2 border-purple-200 rounded-2xl text-center text-2xl font-bold mb-4 outline-none focus:border-purple-500 bg-purple-50" value={pin} onChange={(e) => setPin(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleTeacherLogin()} />
+                  {errorMsg && <p className="text-red-500 font-bold mb-4">{errorMsg}</p>}
+                  <div className="flex gap-3 justify-center">
+                    <button onClick={() => {setShowTeacherLogin(false); setErrorMsg('');}} className="px-6 py-3 bg-gray-200 rounded-2xl font-bold text-gray-700 hover:bg-gray-300">Hủy</button>
+                    <button onClick={handleTeacherLogin} className="px-8 py-3 bg-purple-600 text-white rounded-2xl font-bold hover:bg-purple-700 shadow-lg">Đăng nhập</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-white p-8 md:p-12 rounded-[3rem] shadow-2xl w-full max-w-md text-center border-8 border-yellow-300 transform hover:scale-[1.02] transition-transform">
+              <div className="text-7xl mb-4 animate-bounce">🏰</div>
+              <h1 className="text-3xl md:text-4xl font-black text-blue-600 mb-2 leading-tight">Vương Quốc<br/>Gõ Chữ Telex</h1>
+              <p className="text-gray-500 font-bold mb-8">Bé hãy nhập tên để tham gia thi đấu nhé!</p>
+              
+              <input type="text" placeholder="Tên của con là gì?..." className="w-full p-5 border-4 border-blue-200 rounded-2xl text-center text-xl font-bold text-gray-700 mb-4 focus:border-blue-500 outline-none bg-blue-50" value={playerName} onChange={(e) => setPlayerName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && joinGame()} />
+              {errorMsg && !showTeacherLogin && <p className="text-red-500 font-bold mb-4">{errorMsg}</p>}
+
+              <button onClick={joinGame} className="w-full bg-green-500 text-white font-black text-2xl py-5 rounded-2xl hover:bg-green-600 shadow-[0_8px_0_#16a34a] active:shadow-none active:translate-y-[8px] transition-all">
+                VÀO PHÒNG CHỜ 🚀
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      if (role === 'teacher') {
+        const rankings = getRankings();
+        return (
+          <div className="min-h-screen bg-purple-50 p-4 md:p-8 font-sans">
+            <div className="max-w-5xl mx-auto">
+              <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-3xl shadow-lg mb-8 border-4 border-purple-200 gap-6">
+                <div className="text-center md:text-left">
+                  <h1 className="text-3xl font-black text-purple-700">Màn Hình Điều Khiển 👩‍🏫</h1>
+                  <p className="text-gray-500 font-bold mt-1">Giáo viên đợi học sinh vào đủ rồi bấm Bắt đầu.</p>
+                </div>
+                <div className="flex gap-4">
+                  <button onClick={startGameTeacher} className="bg-green-500 text-white px-8 py-4 rounded-2xl font-black hover:bg-green-600 shadow-md text-lg transform hover:scale-105 transition-all">▶️ BẮT ĐẦU GAME</button>
+                  <button onClick={resetRoomTeacher} className="bg-red-500 text-white px-6 py-4 rounded-2xl font-bold hover:bg-red-600 shadow-md transform hover:scale-105 transition-all">🔄 LÀM MỚI</button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-[2rem] p-6 md:p-10 shadow-2xl border-4 border-yellow-400">
+                <h2 className="text-3xl font-black text-center mb-8 text-orange-500 tracking-wider">🏆 BẢNG XẾP HẠNG TRỰC TIẾP 🏆</h2>
+                <div className="space-y-4">
+                  {rankings.map((player, index) => (
+                    <div key={player.name} className={`flex flex-col md:flex-row justify-between items-center p-5 rounded-2xl font-bold text-xl transition-all ${index === 0 ? 'bg-yellow-100 border-2 border-yellow-400 transform scale-[1.02] shadow-sm' : index === 1 ? 'bg-gray-100 border-2 border-gray-300' : index === 2 ? 'bg-orange-50 border-2 border-orange-200' : 'bg-blue-50'}`}>
+                      <div className="flex items-center gap-4 w-full md:w-auto mb-3 md:mb-0">
+                        <span className="text-3xl w-10 text-center">{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`}</span>
+                        <span className="text-gray-800 font-black text-2xl truncate max-w-[200px]">{player.name}</span>
+                      </div>
+                      <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
+                        <span className="text-blue-600 bg-white px-4 py-2 rounded-xl shadow-sm">⭐ {player.score}</span>
+                        <span className="text-green-600 bg-white px-4 py-2 rounded-xl shadow-sm">⏱️ {player.time}s</span>
+                        <span className={`px-4 py-2 rounded-xl text-sm font-black uppercase tracking-wider ${player.status === 'finished' ? 'bg-green-500 text-white' : player.status === 'playing' ? 'bg-blue-500 text-white animate-pulse' : 'bg-gray-300 text-gray-700'}`}>
+                          {player.status === 'finished' ? 'Về đích' : player.status === 'playing' ? 'Đang gõ' : 'Đang chờ'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {rankings.length === 0 && (
+                    <div className="text-center py-12">
+                      <p className="text-6xl mb-4">👀</p>
+                      <p className="text-gray-400 text-xl font-bold">Chưa có học sinh nào vào phòng...</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (roomState.status === 'lobby') {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-blue-100 to-indigo-100 flex flex-col items-center justify-center p-4 md:p-8 font-sans">
+            <div className="w-full max-w-4xl bg-white p-6 md:p-10 rounded-[3rem] shadow-2xl border-4 border-blue-300 text-center">
+              <h1 className="text-3xl md:text-5xl font-black text-blue-600 mb-4">Xin chào, {playerName}! 👋</h1>
+              <div className="inline-block bg-yellow-100 text-yellow-800 font-bold text-xl px-8 py-4 rounded-full border-2 border-yellow-300 animate-pulse mb-8 shadow-inner">
+                ⏳ Đang đợi Thầy giáo bấm Bắt đầu...
+              </div>
+
+              <h2 className="text-2xl font-black text-purple-600 mb-6">📖 ÔN TẬP BÍ KÍP GÕ DẤU TRƯỚC KHI CHƠI NÀO!</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-left">
+                <div className="bg-blue-50 p-6 rounded-3xl border-2 border-blue-200">
+                  <h3 className="text-xl font-black text-blue-800 mb-4 border-b-2 border-blue-200 pb-2">1. Quy tắc gõ Dấu Thanh</h3>
+                  <ul className="space-y-3 text-lg font-bold text-gray-700">
+                    <li className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm">Dấu Sắc (á) <span className="bg-blue-200 text-blue-800 px-4 py-1 rounded-lg">s</span></li>
+                    <li className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm">Dấu Huyền (à) <span className="bg-blue-200 text-blue-800 px-4 py-1 rounded-lg">f</span></li>
+                    <li className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm">Dấu Hỏi (ả) <span className="bg-blue-200 text-blue-800 px-4 py-1 rounded-lg">r</span></li>
+                    <li className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm">Dấu Ngã (ã) <span className="bg-blue-200 text-blue-800 px-4 py-1 rounded-lg">x</span></li>
+                    <li className="flex justify-between items-center bg-white p-3 rounded-xl shadow-sm">Dấu Nặng (ạ) <span className="bg-blue-200 text-blue-800 px-4 py-1 rounded-lg">j</span></li>
+                  </ul>
+                </div>
+
+                <div className="bg-pink-50 p-6 rounded-3xl border-2 border-pink-200">
+                  <h3 className="text-xl font-black text-pink-800 mb-4 border-b-2 border-pink-200 pb-2">2. Quy tắc gõ Chữ Đặc Biệt</h3>
+                  <ul className="space-y-3 text-lg font-bold text-gray-700">
+                    <li className="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm">Chữ â, ô, ê <span className="bg-pink-200 text-pink-800 px-3 py-1 rounded-lg">aa, oo, ee</span></li>
+                    <li className="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm">Chữ đ <span className="bg-pink-200 text-pink-800 px-3 py-1 rounded-lg">dd</span></li>
+                    <li className="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm">Chữ ă <span className="bg-pink-200 text-pink-800 px-3 py-1 rounded-lg">aw</span></li>
+                    <li className="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm">Chữ ơ <span className="bg-pink-200 text-pink-800 px-3 py-1 rounded-lg">ow</span></li>
+                    <li className="flex justify-between items-center bg-white p-2 rounded-xl shadow-sm">Chữ ư <span className="bg-pink-200 text-pink-800 px-3 py-1 rounded-lg">w</span></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      const myData = roomState.players[playerName.replace(/[.#$[\]]/g, '_')] || {};
+      if (myData.status === 'finished') {
+        return (
+          <div className="min-h-screen bg-gradient-to-br from-green-100 to-teal-100 flex flex-col items-center justify-center p-4 font-sans text-center">
+            <div className="bg-white p-10 md:p-14 rounded-[3rem] shadow-2xl border-8 border-yellow-400 max-w-lg w-full transform hover:scale-105 transition-all">
+              <div className="text-8xl mb-4 animate-bounce">🎉</div>
+              <h1 className="text-5xl font-black text-green-600 mb-2 drop-shadow-sm">XUẤT SẮC!</h1>
+              <p className="text-2xl font-bold text-gray-700 mb-8">{playerName} đã phá đảo game!</p>
+              
+              <div className="bg-green-50 p-6 rounded-3xl border-4 border-green-200 mb-8 space-y-4">
+                <p className="text-xl text-gray-500 font-bold uppercase">Tổng kết của bé</p>
+                <p className="text-4xl font-black text-blue-600">⭐ {myData.score} Điểm</p>
+                <p className="text-4xl font-black text-orange-500">⏱️ {myData.time} Giây</p>
+              </div>
+
+              <p className="text-gray-500 font-bold text-lg bg-gray-100 py-3 px-6 rounded-full inline-block">
+                Hãy nhìn lên màn hình Thầy giáo để xem xếp hạng nhé! 🏆
+              </p>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="h-screen bg-gradient-to-b from-sky-100 to-indigo-100 flex flex-col overflow-hidden relative font-sans" onClick={() => inputRef.current?.focus()}>
+          <div className="bg-white/90 backdrop-blur shadow-sm p-4 md:p-6 flex flex-wrap justify-between items-center z-20 border-b-4 border-blue-200">
+            <div className="text-xl md:text-2xl font-black text-blue-600 bg-blue-50 px-4 py-2 rounded-xl shadow-inner mb-2 md:mb-0">👦 {playerName}</div>
+            <div className="text-lg md:text-xl font-bold text-purple-600 bg-purple-50 px-6 py-2 rounded-full border-2 border-purple-200 mb-2 md:mb-0 shadow-sm">Cấp độ {level} / 6</div>
+            <div className="flex gap-4 items-center">
+              <div className="text-xl font-bold text-gray-600">⏱️ {timeElapsed}s</div>
+              <div className="text-2xl md:text-3xl font-black text-orange-500 drop-shadow-sm">⭐ {score}</div>
+            </div>
+          </div>
+
+          <div className="flex-1 relative overflow-hidden w-full max-w-5xl mx-auto">
+            {activeWords.map((word) => (
+              <div key={word.id} className="absolute bg-white px-6 py-4 rounded-3xl shadow-xl border-4 border-blue-300 text-center flex flex-col items-center justify-center z-10" style={{ left: `${word.x}%`, animation: `fall ${word.duration}s linear forwards` }}>
+                <span className="text-5xl md:text-6xl mb-2 drop-shadow-md">{word.icon}</span>
+                <span className="text-2xl md:text-3xl font-black text-gray-800">{word.word}</span>
+                <span className="text-base md:text-lg font-bold text-gray-400 mt-1 bg-gray-100 px-3 py-1 rounded-lg">({word.telex})</span>
+              </div>
+            ))}
+            <style>{`@keyframes fall { 0% { top: -20%; transform: rotate(-2deg); } 50% { transform: rotate(2deg); } 100% { top: 110%; transform: rotate(-2deg); } }`}</style>
+          </div>
+
+          <div className="bg-white/95 backdrop-blur p-6 md:p-8 shadow-[0_-15px_30px_rgba(0,0,0,0.1)] z-20 flex flex-col items-center border-t-4 border-blue-200 rounded-t-[2rem]">
+            <p className="text-sm font-bold text-gray-400 mb-3 uppercase tracking-wider">Bé hãy gõ nhanh mã Telex vào ô trống nhé!</p>
+            <input ref={inputRef} type="text" value={inputText} onChange={handleInput} autoFocus autoComplete="off" spellCheck="false" placeholder="Gõ mã Telex ở đây..." className="w-full max-w-2xl text-center text-3xl md:text-4xl p-5 md:p-6 border-4 border-blue-400 rounded-full shadow-inner focus:outline-none focus:border-green-500 focus:ring-4 focus:ring-green-100 transition-all font-bold text-gray-800 bg-blue-50/50 placeholder-gray-300" />
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
