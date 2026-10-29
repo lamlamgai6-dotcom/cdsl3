@@ -210,7 +210,7 @@
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
                 <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm text-center border-4 border-purple-300">
                   <h2 className="text-2xl font-black mb-4 text-purple-700">Quyền Quản Trị</h2>
-                  <input type="password" placeholder="Mã PIN (2808)" className="w-full p-4 border-2 border-purple-200 rounded-2xl text-center text-2xl font-bold mb-4 outline-none focus:border-purple-500 bg-purple-50" value={pin} onChange={(e) => setPin(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleTeacherLogin()} />
+                  <input type="password" placeholder="Mã PIN" className="w-full p-4 border-2 border-purple-200 rounded-2xl text-center text-2xl font-bold mb-4 outline-none focus:border-purple-500 bg-purple-50" value={pin} onChange={(e) => setPin(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleTeacherLogin()} />
                   {errorMsg && <p className="text-red-500 font-bold mb-4">{errorMsg}</p>}
                   <div className="flex gap-3 justify-center">
                     <button onClick={() => {setShowTeacherLogin(false); setErrorMsg('');}} className="px-6 py-3 bg-gray-200 rounded-2xl font-bold text-gray-700 hover:bg-gray-300">Hủy</button>
